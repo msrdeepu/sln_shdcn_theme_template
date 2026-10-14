@@ -1,6 +1,6 @@
 import { SITE_CONFIG, API_ENDPOINTS, getLocationAssetUrl, getMapAssetUrl } from '../siteConfig';
-import { VentureData, AmenityItem, FaqItem } from '../types';
-import { InteractiveMapData } from '../types/interactiveMap';
+import type { VentureData, AmenityItem, FaqItem } from '../types';
+import type { InteractiveMapData } from '../types/interactiveMap';
 
 export function extractConvaiAgentId(connectString?: string | null, fallbackId: string = ''): string {
   if (!connectString || typeof connectString !== 'string') return fallbackId;
@@ -95,26 +95,79 @@ export const micrositeService = {
       if (!pageData) return null;
       const ventureData = this.mapToVentureData(pageData);
 
-      // Fetch live master amenities from CMS API
+      // Fetch live master amenities from CMS API and filter strictly to only the selected ones
       try {
         const liveAmenitiesRes = await fetch(`${SITE_CONFIG.apiBaseUrl}/cms/amenities`);
         if (liveAmenitiesRes.ok) {
           const liveJson = await liveAmenitiesRes.json();
-          if (liveJson && liveJson.status === 'success' && Array.isArray(liveJson.data) && liveJson.data.length > 0) {
-            ventureData.amenities = liveJson.data.map((a: any, idx: number) => {
-              const title = a.title || a.display_name || 'Amenity';
-              return {
-                id: a.id ? Number(a.id) : idx + 1,
-                title: title,
-                icon: a.icon || 'Sparkles',
-                category: resolveAmenityCategory(title, a.category),
-                desc: resolveAmenityDescription(title, a.description),
-                image: getLocationAssetUrl(a.icon_image_url || a.image_url || a.icon_image || a.image),
-                iconImage: getLocationAssetUrl(a.icon_image_url || a.icon_image),
-                color: a.color,
-                badge: a.badge,
-              };
+          if (liveJson && liveJson.status === 'success' && Array.isArray(liveJson.data)) {
+            const masterList: any[] = liveJson.data;
+
+            const rawAmenities = pageData.amenities || pageData.raw_data?.amenities || {};
+            const selectedIds: number[] = Array.isArray(rawAmenities.selectedIds)
+              ? rawAmenities.selectedIds.map((id: any) => Number(id)).filter((id: number) => !isNaN(id))
+              : [];
+            const customList: any[] = Array.isArray(rawAmenities.customList) ? rawAmenities.customList : [];
+
+            const masterMap = new Map<number, any>();
+            masterList.forEach((m) => {
+              if (m.id != null) masterMap.set(Number(m.id), m);
             });
+
+            const dynamicallySelected: AmenityItem[] = [];
+
+            if (selectedIds.length > 0) {
+              selectedIds.forEach((id) => {
+                const masterItem = masterMap.get(id);
+                if (masterItem) {
+                  const title = masterItem.title || masterItem.display_name || 'Amenity';
+                  dynamicallySelected.push({
+                    id,
+                    title,
+                    icon: masterItem.icon || 'Sparkles',
+                    category: resolveAmenityCategory(title, masterItem.category),
+                    desc: resolveAmenityDescription(title, masterItem.description),
+                    image: getLocationAssetUrl(masterItem.icon_image_url || masterItem.image_url || masterItem.icon_image || masterItem.image),
+                    iconImage: getLocationAssetUrl(masterItem.icon_image_url || masterItem.icon_image),
+                    color: masterItem.color,
+                    badge: masterItem.badge,
+                  });
+                } else {
+                  const customItem = customList.find((c) => Number(c.id) === id);
+                  if (customItem) {
+                    const title = customItem.title || 'Amenity';
+                    dynamicallySelected.push({
+                      id,
+                      title,
+                      icon: customItem.icon || 'Sparkles',
+                      category: resolveAmenityCategory(title, customItem.category),
+                      desc: customItem.desc || customItem.description || '',
+                      image: customItem.image ? getLocationAssetUrl(customItem.image) : '',
+                      iconImage: customItem.iconImage ? getLocationAssetUrl(customItem.iconImage) : '',
+                    });
+                  }
+                }
+              });
+            } else if (customList.length > 0) {
+              customList.forEach((c: any) => {
+                const cId = Number(c.id);
+                const masterItem = masterMap.get(cId);
+                const title = c.title || masterItem?.title || 'Amenity';
+                dynamicallySelected.push({
+                  id: cId,
+                  title,
+                  icon: masterItem?.icon || c.icon || 'Sparkles',
+                  category: resolveAmenityCategory(title, c.category || masterItem?.category),
+                  desc: c.desc || masterItem?.description || '',
+                  image: c.image ? getLocationAssetUrl(c.image) : '',
+                  iconImage: c.iconImage ? getLocationAssetUrl(c.iconImage) : '',
+                });
+              });
+            }
+
+            if (dynamicallySelected.length > 0) {
+              ventureData.amenities = dynamicallySelected;
+            }
           }
         }
       } catch (err) {
@@ -151,6 +204,21 @@ export const micrositeService = {
         }
       } catch (err) {
         console.warn('[MicrositeService] Error loading live locations:', err);
+      }
+
+      // Fetch live property counts (Total Plots & Available Plots) from Property model
+      try {
+        const vId = pageData.venture_id || ventureId || '232';
+        const stats = await this.fetchPropertyStats(vId);
+        if (stats) {
+          ventureData.totalPlotsCount = stats.total_plots;
+          ventureData.availablePlotsCount = stats.available_plots;
+          if (stats.total_plots > 0) {
+            ventureData.totalPlots = String(stats.total_plots);
+          }
+        }
+      } catch (err) {
+        console.warn('[MicrositeService] Error loading property counts:', err);
       }
 
       return ventureData;
@@ -236,94 +304,78 @@ export const micrositeService = {
           title: p.title || 'Strategic Enclave Pillar',
           description: p.desc || '',
           tag: p.tag || 'Value Vector',
-          points: Array.isArray(p.points) ? p.points : [],
+          points: [],
         }))
       : [
           {
             tag: 'Strategic Nexus',
-            title: 'Tada-Sri City Growth Gateway',
-            description: 'Positioned signal-free along the NH-16 arterial expressway, placing Fortune-500 industrial hubs and express transit within minutes.',
-            points: [
-              '5 Mins to Tada Railway Junction',
-              'Direct signal-free 6-lane artery to North Chennai',
-              'Adjacent to international industrial logistics corridor'
-            ],
-            icon: 'Compass'
+            title: 'Prime Growth Corridor',
+            description: 'Positioned signal-free along major expressways, placing employment hubs and rapid transit corridors within easy access.',
+            points: [],
+            icon: 'Compass',
           },
           {
             tag: 'Capital Appreciation',
-            title: 'High-Yield Industrial Synergy',
-            description: 'Flanked by Sri City SEZ housing 220+ global conglomerates with over 65,000 corporate professionals driving relentless land appreciation.',
-            points: [
-              'Demonstrated 18–24% historic annual land appreciation',
-              'Expanding educational campuses & tertiary healthcare hubs',
-              'Sustained corporate housing rental demand'
-            ],
-            icon: 'TrendingUp'
+            title: 'High-Yield Investment Potential',
+            description: 'Surrounded by rapidly developing commercial and residential infrastructure, driving consistent long-term land appreciation.',
+            points: [],
+            icon: 'TrendingUp',
           },
           {
             tag: 'Legal Integrity',
             title: '100% Clear Title & Spot Registry',
-            description: 'Complete statutory and legal certainty with sanctioned layout certification, verified titles, and pre-approved national bank loans.',
-            points: [
-              'Immediate spot registration upon plot allocation',
-              'Pre-approved mortgage assistance: SBI, HDFC, ICICI',
-              'Unencumbered freehold ownership deed'
-            ],
-            icon: 'ShieldCheck'
-          }
+            description: 'Complete statutory and legal certainty with approved layout certification, verified freehold deeds, and immediate registration.',
+            points: [],
+            icon: 'ShieldCheck',
+          },
         ];
 
-    const mappedAmenities: AmenityItem[] = [
-      {
-        id: 1,
-        title: 'WiFi',
-        category: 'Connectivity',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236429_wifi.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236429_wifi.png',
-        desc: 'High-speed dedicated fiber optic connectivity integrated throughout the layout.',
-      },
-      {
-        id: 2,
-        title: 'Power Connection',
-        category: 'Utilities',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236449_power-connection.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236449_power-connection.png',
-        desc: 'Dedicated underground power cabling with individual plot feeder pillars.',
-      },
-      {
-        id: 3,
-        title: 'Swimming Pool',
-        category: 'Recreation',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236466_swimming-pool.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236466_swimming-pool.png',
-        desc: 'Resort-style luxury community swimming pool and relaxation deck.',
-      },
-      {
-        id: 4,
-        title: 'Sewage pipe',
-        category: 'Utilities',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236485_sewage-pipe.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236485_sewage-pipe.png',
-        desc: '100% concealed underground sewage pipeline & stormwater drainage network.',
-      },
-      {
-        id: 5,
-        title: 'Fire Safety Equipment',
-        category: 'Safety',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236496_fire-safety-equipment.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236496_fire-safety-equipment.png',
-        desc: 'Modern certified fire prevention infrastructure and safety hydrants.',
-      },
-      {
-        id: 6,
-        title: 'GRAND ENTRANCE ARCH',
-        category: 'Architecture',
-        image: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236515_grand-entrance-arch.png',
-        iconImage: 'https://cms.slnmplapp.com/core/public/uploads/amenities/1790236515_grand-entrance-arch.png',
-        desc: 'Monumental architectural gateway with 24/7 guarded security access.',
-      },
-    ];
+    const rawAmenities = page.amenities || page.raw_data?.amenities || {};
+    const selectedIds: number[] = Array.isArray(rawAmenities.selectedIds)
+      ? rawAmenities.selectedIds.map((id: any) => Number(id)).filter((id: number) => !isNaN(id))
+      : [];
+    const customList: any[] = Array.isArray(rawAmenities.customList) ? rawAmenities.customList : [];
+
+    const mappedAmenities: AmenityItem[] = [];
+    if (customList.length > 0) {
+      customList.forEach((c: any, idx: number) => {
+        const cId = c.id != null ? Number(c.id) : idx + 1;
+        if (selectedIds.length === 0 || selectedIds.includes(cId)) {
+          const title = c.title || c.name || 'Amenity';
+          const img = getLocationAssetUrl(c.icon_image_url || c.icon_image || c.iconImage || c.image_url || c.image);
+          mappedAmenities.push({
+            id: cId,
+            title,
+            category: resolveAmenityCategory(title, c.category),
+            desc: c.desc || c.description || '',
+            icon: c.icon || 'Sparkles',
+            image: img || undefined,
+            iconImage: img || undefined,
+          });
+        }
+      });
+    }
+
+    // Default 15 world-class venture amenities matching reference catalog
+    const finalAmenities: AmenityItem[] = mappedAmenities.length > 0
+      ? mappedAmenities
+      : [
+          { id: 1, title: 'Grand Entrance Arch', category: 'Architecture' },
+          { id: 2, title: 'Underground Electricity Connection', category: 'Utilities' },
+          { id: 3, title: 'Avenue Plantation', category: 'Landscape' },
+          { id: 4, title: 'Street Lights', category: 'Utilities' },
+          { id: 5, title: 'Children Park', category: 'Recreation' },
+          { id: 6, title: 'Duplex Villa', category: 'Architecture' },
+          { id: 7, title: 'Water Supply to Each Plot', category: 'Utilities' },
+          { id: 8, title: 'Compound Wall', category: 'Security' },
+          { id: 9, title: '24/7 Security', category: 'Security' },
+          { id: 10, title: 'Overhead Water Tank', category: 'Utilities' },
+          { id: 11, title: 'Underground Drainage', category: 'Utilities' },
+          { id: 12, title: 'Entire Layout as Per Vastu', category: 'Planning' },
+          { id: 13, title: 'Clear Title & Spot Registration', category: 'Legal' },
+          { id: 14, title: 'Solar Fencing Entire Layout', category: 'Security' },
+          { id: 15, title: '40 & 50 Ft Blacktop Roads', category: 'Infrastructure' },
+        ];
 
     const rawLocations = (Array.isArray(page.primeLocations) && page.primeLocations.length > 0)
       ? page.primeLocations
@@ -396,12 +448,16 @@ export const micrositeService = {
           { question: 'What road dimensions and utility infrastructures are implemented?', answer: 'The layout features 40 & 50 feet wide asphalt blacktop avenues, concealed underground drainage, transformer electrification, and 24/7 guarded security.' },
         ];
 
-    const overviewParagraphs = Array.isArray(about.paragraphs) && about.paragraphs.length > 0
+    const rawParagraphs: string[] = Array.isArray(about.paragraphs) && about.paragraphs.length > 0
       ? about.paragraphs
       : [
           page.tagline || hero.subheadline || 'A premier master-planned plotted layout engineered for generational wealth and elevated living.',
           'Designed with broad asphalt avenues, underground utilities, and clear legal title certainty.'
         ];
+
+    const overviewParagraphs = rawParagraphs.filter(
+      (p: string) => p && !/SLN Highlands/i.test(p) && !/Highlands/i.test(p)
+    );
 
     return {
       id: String(page.slug || page.id),
@@ -412,12 +468,32 @@ export const micrositeService = {
       address: concierge.officeAddress || ventureRel.location || '',
       reraNumber: hero.reraNumber || 'Applied & Compliant',
       heroBanner: hero.heroBannerUrl || 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80',
+      heroBgImage: hero.heroBgImageUrl || hero.bgImageUrl || hero.heroCoverImageUrl || '',
       welcomeEyebrow: hero.welcomeEyebrow != null ? String(hero.welcomeEyebrow).trim() : '',
       headline: hero.headline || page.title,
       subheadline: hero.subheadline || page.tagline,
-      vimeoId: (hero.vimeoId || hero.videoUrl || ventureRel.venture_vimeo_id) ? String(hero.vimeoId || hero.videoUrl || ventureRel.venture_vimeo_id).trim() : '',
-      vimeoUrl: hero.videoUrl || (hero.vimeoId ? `https://player.vimeo.com/video/${hero.vimeoId}` : ''),
-      droneVideoTitle: (hero.vimeoId || hero.videoUrl || ventureRel.venture_vimeo_id) ? `${page.title} — 4K Cinematic Aerial Walkthrough` : '',
+      vimeoId: (() => {
+        const raw = hero.vimeoId || hero.videoUrl || ventureRel.venture_vimeo_id;
+        return raw && String(raw).trim() ? String(raw).trim() : undefined;
+      })(),
+      vimeoUrl: (() => {
+        const raw = hero.videoUrl || (hero.vimeoId ? `https://player.vimeo.com/video/${hero.vimeoId}` : null) || (ventureRel.venture_vimeo_id ? `https://player.vimeo.com/video/${ventureRel.venture_vimeo_id}` : null);
+        return raw && String(raw).trim() ? String(raw).trim() : undefined;
+      })(),
+      droneVideoTitle:
+        hero.videoTitle ||
+        hero.droneVideoTitle ||
+        page.videoTitle ||
+        page.raw_data?.hero?.videoTitle ||
+        'Cinematic Master Tour From Above',
+      droneVideoSubtitle:
+        hero.videoDescription ||
+        hero.videoSubtitle ||
+        hero.droneVideoSubtitle ||
+        hero.droneVideoDesc ||
+        page.videoDescription ||
+        page.raw_data?.hero?.videoDescription ||
+        "Experience an ultra-high-definition bird's-eye perspective capturing the sweeping 40 & 50 ft blacktop avenues, verdant open green lungs, and strategic growth corridor connectivity.",
 
       overviewText: overviewParagraphs,
       aboutImage: about.sitePhotoUrl || 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1000&q=80',
@@ -427,29 +503,73 @@ export const micrositeService = {
       aboutQuoteAuthor: about.quoteAuthor || '— SLN Group Principal Architecture & Engineering Desk',
       aboutChecklist: Array.isArray(about.checklist) ? about.checklist : [],
 
-      totalPlots: specs[0]?.value || masterPlan.totalPlotsCount || '175',
+      totalPlots: (() => {
+        const plotSpec = Array.isArray(specs) ? specs.find((s: any) => /plot/i.test(s.label || s.sub || '')) : null;
+        return plotSpec?.value || masterPlan.totalPlotsCount || '175';
+      })(),
       roadWidth: (() => {
         const roadSpec = Array.isArray(specs) ? specs.find((s: any) => /road|width|avenue|bt/i.test(s.label || s.sub || '')) : null;
-        const val = roadSpec?.value || specs[1]?.value || '40 & 50 Feet';
+        const val = roadSpec?.value || '40 & 50 Feet';
         return String(val) === '10' ? '40 & 50 Feet' : val;
       })(),
       specs: mappedStats,
       stats: mappedStats,
+      specsTitle: (() => {
+        const t = page.specsTitle ?? page.specs_title ?? page.raw_data?.specsTitle ?? page.raw_data?.specs_title ?? (page.specs && typeof page.specs === 'object' && !Array.isArray(page.specs) ? page.specs.sectionTitle : null);
+        return t ? String(t).trim() : '';
+      })(),
+      specsEyebrow: (() => {
+        const e = page.specsEyebrow ?? page.specs_eyebrow ?? page.raw_data?.specsEyebrow ?? page.raw_data?.specs_eyebrow ?? (page.specs && typeof page.specs === 'object' && !Array.isArray(page.specs) ? page.specs.sectionEyebrow : null);
+        return e ? String(e).trim() : '';
+      })(),
+      specsSubtitle: (() => {
+        const s = page.specsSubtitle ?? page.specs_subtitle ?? page.raw_data?.specsSubtitle ?? page.raw_data?.specs_subtitle ?? (page.specs && typeof page.specs === 'object' && !Array.isArray(page.specs) ? page.specs.sectionSubtitle : null);
+        return s ? String(s).trim() : '';
+      })(),
 
       whyChoosePoints: mappedPillars,
-      whyChooseEyebrow: whyChoose.sectionEyebrow || 'Strategic Value Proposition',
-      whyChooseTitle: whyChoose.sectionTitle || 'Engineered for Generational Growth & Title Certainty',
-      whyChooseSubtitle: whyChoose.sectionSubtitle || '',
+      whyChooseTitle:
+        whyChoose.sectionTitle ||
+        page.whyChooseTitle ||
+        page.why_choose_title ||
+        page.raw_data?.whyChoose?.sectionTitle ||
+        'An Unrivalled Convergence of Connectivity, Economy & Legal Security',
+      whyChooseSubtitle: (() => {
+        const rawSub =
+          whyChoose.sectionSubtitle ||
+          page.whyChooseSubtitle ||
+          page.why_choose_subtitle ||
+          page.raw_data?.whyChoose?.sectionSubtitle ||
+          '';
+        const vTitle = page.title || ventureRel.name || 'this venture';
+        return rawSub
+          .replace(/SLN Highlands/gi, vTitle)
+          .replace(/Highlands/gi, vTitle);
+      })(),
 
-      amenities: mappedAmenities,
+      amenities: finalAmenities,
+      amenitiesBgImage: page.amenities?.bgImageUrl || page.amenitiesBgImage || (page.raw_data?.amenities?.bgImageUrl) || '/amenities_clubhouse_bg.jpg',
+      amenitiesTitle: page.amenities?.sectionTitle || page.amenitiesTitle || (page.raw_data?.amenities?.sectionTitle) || 'Premium Plots With World Class Amenities',
+      amenitiesEyebrow: page.amenities?.sectionEyebrow || page.amenitiesEyebrow || (page.raw_data?.amenities?.sectionEyebrow) || 'World-Class Infrastructure',
+      amenitiesSubtitle: page.amenities?.sectionSubtitle || page.raw_data?.amenities?.sectionSubtitle || '',
       locations: mappedLocations,
 
       brochureMockup: brochure.coverPreviewUrl || 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=crop&w=800&q=80',
       brochureUrl: brochure.pdfUrl || '#download-brochure',
-      brochureTitle: brochure.title || 'Private Investment Dossier & Master Cadastral Kit',
-      brochureDesc: brochure.description || 'Download verified legal title opinions, master layout blueprints, and plot availability schedule.',
+      brochureTitle: brochure.title || 'Farmland Near Hyderabad With Easy Access',
+      brochureDesc: brochure.description || 'Sahaja Nature Lake is at Aroor, Sadashivpet, approximately 5 km off Mumbai Highway.',
       brochureFileSize: brochure.fileSizeLabel || 'PDF • 8.4 MB',
       brochureFileName: brochure.fileName || `${page.slug || 'venture'}-dossier.pdf`,
+      brochureCardTitle: brochure.cardTitle || 'PROJECT LOCATION',
+      brochureBtnText: brochure.btnText || 'Get Route & Site Visit Details',
+      brochureItems: Array.isArray(brochure.items) && brochure.items.length > 0
+        ? brochure.items
+        : [
+            { label: 'Project', value: page.title || ventureRel.title || ventureRel.name || 'Sahaja Nature Lake' },
+            { label: 'Location', value: hero.locationText || ventureRel.location || 'Aroor, Sadashivpet' },
+            { label: 'Highway', value: '5 km off Mumbai Highway' },
+            { label: 'Road', value: 'Mominpet–Budhera Road' },
+          ],
 
       mapEmbedImage: connectivity.mapEmbedUrl || 'https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=800&q=80',
 
@@ -478,6 +598,12 @@ export const micrositeService = {
           return 'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d31050.15024419996!2d80.005085!3d13.585526!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a4d81232870197d%3A0xb35a0cfb247f082e!2sTada%2C%20Andhra%20Pradesh!5e0!3m2!1sen!2sin!4v1710000000000';
         })(),
         directionsUrl: concierge.googleMapsDirectionsUrl || concierge.directionsUrl || 'https://maps.app.goo.gl/ccX7VBApuJTJGqKHA',
+        siteVisitEyebrow: concierge.siteVisitEyebrow !== undefined ? concierge.siteVisitEyebrow : 'SITE VISIT',
+        siteVisitTitle: concierge.siteVisitTitle !== undefined ? concierge.siteVisitTitle : 'Plan Your Site Visit',
+        siteVisitDesc: concierge.siteVisitDesc !== undefined ? concierge.siteVisitDesc : 'Visit the venture in person to explore available plots, walk through the layout, and discuss your plans with our friendly team.',
+        formTitle: concierge.formTitle !== undefined ? concierge.formTitle : 'Book a Free Site Visit',
+        formSubtitle: concierge.formSubtitle !== undefined ? concierge.formSubtitle : 'Share your details and our team will get in touch to coordinate your visit.',
+        formButtonText: concierge.formButtonText !== undefined ? concierge.formButtonText : 'Book Free Site Visit',
       },
 
       seo: {
@@ -494,6 +620,162 @@ export const micrositeService = {
       chatbotAgentId,
       voicebotAgentId,
       colorPalette: page.color_palette || page.raw_data?.colorPalette || undefined,
+      footer: (() => {
+        const f = page.footer || page.raw_data?.footer || {};
+
+        // Colors: Default to reference image red #c9082a, avoiding legacy dark default #090d16
+        const resolvedBgColor = (f.bgColor && f.bgColor !== '#090d16') ? f.bgColor : '#c9082a';
+        const resolvedCardBgColor = f.cardBgColor || '#ffffff';
+        const resolvedAccentColor = (f.accentColor && f.accentColor !== '#c5a880') ? f.accentColor : '#c9082a';
+        const resolvedTextColor = f.textColor || '#1e293b';
+
+        // Google Map embed
+        const rawMap = f.mapEmbedUrl || f.map_embed_url || concierge.googleMapsEmbedUrl || concierge.mapEmbedUrl ||
+          'https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d31050.15024419996!2d80.005085!3d13.585526!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3a4d81232870197d%3A0xb35a0cfb247f082e!2sTada%2C%20Andhra%20Pradesh!5e0!3m2!1sen!2sin!4v1710000000000';
+        let mapEmbedUrl = '';
+        if (rawMap) {
+          const match = String(rawMap).match(/src=["']([^"']+)["']/i);
+          mapEmbedUrl = match ? match[1] : String(rawMap).trim();
+        }
+
+        // Headline: if defined by user (even empty string), respect it. If undefined, default to reference image "Let's Connect"
+        const headline = f.headline !== undefined ? f.headline : "Let's Connect";
+
+        // Socials: if array defined by user, filter valid URLs. If undefined, default to the 5 reference platforms
+        const socials = Array.isArray(f.socials)
+          ? f.socials.filter((s: any) => s && s.url && String(s.url).trim().length > 0)
+          : [
+              { platform: 'facebook', url: 'https://facebook.com' },
+              { platform: 'twitter', url: 'https://twitter.com' },
+              { platform: 'google', url: 'https://google.com' },
+              { platform: 'linkedin', url: 'https://linkedin.com' },
+              { platform: 'rss', url: 'https://rss.com' },
+            ];
+
+        // 4 Columns: if defined by user, respect it. If undefined, default to reference image columns
+        const col1 = f.col1 !== undefined ? f.col1 : {
+          title: 'Services',
+          items: [
+            { label: 'Web Design', href: '#' },
+            { label: 'Development', href: '#' },
+            { label: 'Graphic Design', href: '#' },
+            { label: 'Branding', href: '#' },
+          ],
+        };
+
+        const col2 = f.col2 !== undefined ? f.col2 : {
+          title: 'Company',
+          items: [
+            { label: 'About Us', href: '#' },
+            { label: 'Story', href: '#' },
+            { label: 'Terms', href: '#' },
+            { label: 'Contact Us', href: '#' },
+          ],
+        };
+
+        const col3 = f.col3 !== undefined ? f.col3 : {
+          title: 'Links',
+          items: [
+            { label: 'Company', href: '#' },
+            { label: 'Products', href: '#' },
+            { label: 'Blog', href: '#' },
+            { label: 'Portfolio', href: '#' },
+          ],
+        };
+
+        const col4 = f.col4 !== undefined ? f.col4 : (
+          f.contactCol !== undefined ? {
+            title: f.contactCol.title || 'Get in Touch',
+            items: [
+              ...(f.contactCol.email ? [{ label: f.contactCol.email, href: `mailto:${f.contactCol.email}` }] : []),
+              ...(f.contactCol.phone ? [{ label: f.contactCol.phone, href: `tel:${f.contactCol.phone}` }] : []),
+              ...(f.contactCol.address ? [{ label: f.contactCol.address.split('\n')[0] || f.contactCol.address, href: '#' }] : []),
+            ],
+          } : {
+            title: 'Get in Touch',
+            items: [
+              { label: 'support@website.com', href: 'mailto:support@website.com' },
+              { label: '123 456 789', href: 'tel:123456789' },
+              { label: 'Office Location', href: '#contact' },
+              { label: 'Customer Support', href: '#' },
+            ],
+          }
+        );
+
+        return {
+          ...f,
+          bgColor: resolvedBgColor,
+          cardBgColor: resolvedCardBgColor,
+          textColor: resolvedTextColor,
+          accentColor: resolvedAccentColor,
+          bottomTextColor: f.bottomTextColor || '#ffffff',
+
+          showMap: f.showMap !== undefined ? Boolean(f.showMap) : true,
+          mapEmbedUrl,
+
+          headline,
+          socials,
+
+          col1,
+          col2,
+          col3,
+          col4,
+
+          showBottomBar: f.showBottomBar !== undefined ? Boolean(f.showBottomBar) : false,
+          copyrightText: f.copyrightText !== undefined ? f.copyrightText : '',
+          bottomLinks: Array.isArray(f.bottomLinks) ? f.bottomLinks : undefined,
+
+          logoUrl: f.logoUrl || f.logo_url || '',
+          logoBg: f.logoBg || f.logo_bg || '#ffffff',
+          description: f.description || '',
+          navTitle: f.navTitle || f.nav_title || '',
+          navItems: Array.isArray(f.navItems) ? f.navItems : undefined,
+          col3Title: f.col3Title || f.col3_title || '',
+          officeTitle: f.officeTitle || f.office_title || concierge.loungeTitle || '',
+          address: f.address || concierge.officeAddress || '',
+          phone: f.phone || concierge.directSalesPhone || '',
+          showBackToTop: f.showBackToTop !== false,
+        };
+      })(),
+      developmentHighlights: (() => {
+        const rawConn = page.connectivity || page.raw_data?.connectivity;
+        if (!rawConn) {
+          return {
+            title: '',
+            eyebrow: '',
+            subtitle: '',
+            items: [],
+          };
+        }
+
+        const rawNodes = Array.isArray(rawConn.transitNodes) ? rawConn.transitNodes : [];
+        const items = rawNodes.map((n: any, idx: number) => {
+          const rawImg = (n.image || n.image_url || '').trim();
+          const resolvedImg = rawImg ? getLocationAssetUrl(rawImg) : '';
+          return {
+            id: n.id ? Number(n.id) : idx + 1,
+            title: n.title || '',
+            image: resolvedImg,
+            description: n.description || n.desc || '',
+            desc: n.description || n.desc || '',
+            time: n.time || '',
+            dist: n.dist || '',
+          };
+        });
+
+        const rawTitle = rawConn.title ? String(rawConn.title).trim() : '';
+        const cleanTitle =
+          rawTitle === 'A Connected Nexus Between Urban Chennai & Sri City Hub'
+            ? 'Development Highlights'
+            : rawTitle;
+
+        return {
+          title: cleanTitle,
+          eyebrow: rawConn.eyebrow || '',
+          subtitle: rawConn.subtitle || '',
+          items, // Strictly what exists in backend. No fallback dummy items!
+        };
+      })(),
     };
   },
 
@@ -566,6 +848,61 @@ export const micrositeService = {
       } catch (e) {
         // Continue to next fallback endpoint
       }
+    }
+
+    return null;
+  },
+
+  /**
+   * Fetch live property counts (Total Plots & Available Plots) for a venture
+   */
+  async fetchPropertyStats(ventureId: string | number): Promise<{ total_plots: number; available_plots: number } | null> {
+    if (!ventureId) return null;
+    const baseUrl = SITE_CONFIG.apiBaseUrl.replace(/\/+$/, '');
+
+    // 1. Try dedicated property-stats endpoints
+    const statsEndpoints = [
+      `${baseUrl}/ventures/${ventureId}/property-stats`,
+      `${baseUrl}/cms/ventures/${ventureId}/property-stats`,
+      `https://cms.slnmplapp.com/api/ventures/${ventureId}/property-stats`,
+      `https://cms.slnmplapp.com/api/cms/ventures/${ventureId}/property-stats`,
+    ];
+
+    for (const url of statsEndpoints) {
+      try {
+        const res = await fetch(url);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && (json.status === 'success' || json.data) && json.data) {
+            const data = json.data;
+            if (typeof data.total_plots === 'number') {
+              return {
+                total_plots: data.total_plots,
+                available_plots: data.available_plots ?? 0,
+              };
+            }
+          }
+        }
+      } catch (e) {
+        // Continue to fallback
+      }
+    }
+
+    // 2. Query interactive-map which queries Property model directly
+    try {
+      const mapData = await this.fetchInteractiveMap(ventureId);
+      if (mapData && Array.isArray(mapData.plots)) {
+        const total = mapData.plots.length;
+        const available = mapData.plots.filter(
+          (p: any) => String(p.status || '').toLowerCase() === 'available'
+        ).length;
+        return {
+          total_plots: total,
+          available_plots: available,
+        };
+      }
+    } catch (e) {
+      console.warn('[MicrositeService] Error calculating property counts from map:', e);
     }
 
     return null;

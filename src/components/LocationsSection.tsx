@@ -1,170 +1,206 @@
-import React, { useState } from 'react';
-import { VentureData } from '../types';
-import { getLocationAssetUrl } from '../siteConfig';
-import { Card, CardContent } from './ui/card';
-import { Badge } from './ui/badge';
-import { Navigation, Clock } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { VentureData, LocationItem } from '../types';
+import { SITE_CONFIG, getLocationAssetUrl } from '../siteConfig';
+import {
+  Navigation,
+  Clock,
+  Plane,
+  Building2,
+  MapPin,
+  Train,
+  Landmark,
+  GraduationCap,
+  Sparkles,
+} from 'lucide-react';
 
 interface LocationsSectionProps {
   venture: VentureData;
 }
 
 export default function LocationsSection({ venture }: LocationsSectionProps) {
-  const [selectedGroup, setSelectedGroup] = useState('ALL');
-  const [expandedIds, setExpandedIds] = useState<Record<string | number, boolean>>({});
+  const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const [liveLocations, setLiveLocations] = useState<LocationItem[]>(
+    Array.isArray(venture.locations) && venture.locations.length > 0 ? venture.locations : []
+  );
+  const [isLoading, setIsLoading] = useState<boolean>(!venture.locations || venture.locations.length === 0);
 
-  const toggleExpand = (id: string | number) => {
-    setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
+  // Fetch strictly live CMS prime locations from API
+  useEffect(() => {
+    let isMounted = true;
+    const fetchLiveLocations = async () => {
+      try {
+        const vId = venture.ventureId || SITE_CONFIG.activeVentureId || '232';
+        let res = await fetch(`${SITE_CONFIG.apiBaseUrl}/cms/venture-locations?venture_id=${vId}`);
+        let json = res.ok ? await res.json() : null;
+
+        // If specific venture query returned 0, fetch all active locations
+        if (!json || !Array.isArray(json.data) || json.data.length === 0) {
+          const fallbackRes = await fetch(`${SITE_CONFIG.apiBaseUrl}/cms/venture-locations`);
+          if (fallbackRes.ok) {
+            json = await fallbackRes.json();
+          }
+        }
+
+        if (json && json.status === 'success' && Array.isArray(json.data) && json.data.length > 0) {
+          const mapped: LocationItem[] = json.data.map((n: any, idx: number) => ({
+            id: n.id ? Number(n.id) : idx + 1,
+            title: n.title || 'Prime Landmark',
+            distance: n.distance
+              ? String(n.distance).toUpperCase().includes('KM')
+                ? String(n.distance).toUpperCase()
+                : `${n.distance} KM`
+              : '—',
+            travelTime: n.travel_time || '10 Mins Drive',
+            group: n.group ? String(n.group).trim() : 'Connectivity',
+            image: getLocationAssetUrl(n.image_url || n.image),
+            desc: n.description || n.desc || '',
+          }));
+          if (isMounted) {
+            setLiveLocations(mapped);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('[LocationsSection] Live locations fetch failed:', err);
+      }
+      if (isMounted) {
+        if (venture.locations && venture.locations.length > 0) {
+          setLiveLocations(venture.locations);
+        }
+        setIsLoading(false);
+      }
+    };
+
+    fetchLiveLocations();
+    return () => {
+      isMounted = false;
+    };
+  }, [venture.ventureId, venture.locations]);
+
+  // Derive unique filter groups purely from the loaded live data
+  const uniqueGroups = Array.from(new Set(liveLocations.map((l) => l.group))).filter(Boolean);
+
+  const getGroupIcon = (groupName: string) => {
+    const g = groupName.toLowerCase();
+    if (g.includes('airport') || g.includes('flight') || g.includes('aviation')) return <Plane className="w-3.5 h-3.5" />;
+    if (g.includes('transit') || g.includes('rail') || g.includes('station') || g.includes('train')) return <Train className="w-3.5 h-3.5" />;
+    if (g.includes('school') || g.includes('college') || g.includes('education') || g.includes('univ')) return <GraduationCap className="w-3.5 h-3.5" />;
+    if (g.includes('temple') || g.includes('heritage') || g.includes('historic')) return <Landmark className="w-3.5 h-3.5" />;
+    return <Building2 className="w-3.5 h-3.5" />;
   };
 
-  const locations = Array.isArray(venture.locations) && venture.locations.length > 0
-    ? venture.locations
-    : [
-        { id: 1, title: 'Tirupati International Airport', distance: '10 km', travelTime: '15 Mins', group: 'AIRPORT', image: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80', desc: 'Rapid airport connectivity for domestic and regional transit.' },
-        { id: 2, title: 'Sri City Industrial Hub', distance: '8 km', travelTime: '12 Mins', group: 'INDUSTRY', image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=600&q=80', desc: 'Home to 220+ multinational corporations and manufacturing campuses.' },
-        { id: 3, title: 'Srikalahasti Temple Town', distance: '15 km', travelTime: '20 Mins', group: 'HERITAGE', image: 'https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=600&q=80', desc: 'Spiritual landmark and historic town centre with bustling commerce.' },
-        { id: 4, title: 'Tada Railway Junction', distance: '5 km', travelTime: '8 Mins', group: 'TRANSIT', image: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?auto=format&fit=crop&w=600&q=80', desc: 'Suburban train junction linking Chennai central and Nellore corridors.' },
-      ];
+  const groups = [
+    { key: 'all', label: 'All Prime Locations', icon: <Sparkles className="w-3.5 h-3.5" /> },
+    ...uniqueGroups.map((grp) => ({
+      key: grp,
+      label: grp,
+      icon: getGroupIcon(grp),
+    })),
+  ];
 
-  const groups = ['ALL', ...Array.from(new Set(locations.map((l) => (l.group || 'CONNECTIVITY').toUpperCase())))];
-
-  const filteredLocations = selectedGroup === 'ALL'
-    ? locations
-    : locations.filter((l) => (l.group || 'CONNECTIVITY').toUpperCase() === selectedGroup);
-
-  const formatGroupLabel = (grp: string) => {
-    if (grp === 'ALL') return 'All Locations';
-    if (grp === 'TOWN') return 'Nearby Town';
-    return grp
-      .toLowerCase()
-      .split(' ')
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ');
-  };
+  const filteredLocations =
+    selectedGroup === 'all'
+      ? liveLocations
+      : liveLocations.filter((l) => l.group?.toLowerCase() === selectedGroup.toLowerCase());
 
   return (
     <section id="locations" className="py-20 lg:py-28 bg-[#fafaf9] border-b border-zinc-200/90 text-zinc-900 relative">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10">
-        {/* Section Header with Familiar English */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 pb-2 border-b border-zinc-200/80">
-          <div className="max-w-2xl">
-            <Badge variant="outline" className="mb-3 text-xs font-mono uppercase tracking-wider border-emerald-600/30 text-emerald-700 bg-emerald-50">
-              Prime Locations
-            </Badge>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-zinc-900 tracking-tight">
-              Prime Locations & Connectivity
-            </h2>
-            <p className="text-zinc-600 text-sm sm:text-base mt-2 font-normal leading-relaxed">
-              Conveniently connected to major transit hubs, schools, hospitals, industrial corridors, and everyday destinations.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 self-start lg:self-end">
-            <span className="text-xs font-mono text-zinc-500 bg-white border border-zinc-200 px-3 py-1.5 rounded-full shadow-2xs">
-              Showing <strong className="text-zinc-900 font-semibold">{filteredLocations.length}</strong> of {locations.length} Locations
-            </span>
-          </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* Section Header: Strictly normalized to Regional Connectivity with no badges or pill counters */}
+        <div className="pb-3 border-b border-zinc-200/80">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-zinc-900 tracking-tight leading-tight">
+            Regional Connectivity
+          </h2>
         </div>
 
-        {/* Clean, Organized Category Filter Bar with Familiar Labels */}
+        {/* Clean Filter Bar */}
         {groups.length > 2 && (
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 scrollbar-none">
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
             {groups.map((grp) => {
-              const count = grp === 'ALL'
-                ? locations.length
-                : locations.filter((l) => (l.group || 'CONNECTIVITY').toUpperCase() === grp).length;
-              const isActive = selectedGroup === grp;
-
+              const isActive = selectedGroup === grp.key;
               return (
                 <button
-                  key={grp}
+                  key={grp.key}
                   type="button"
-                  onClick={() => setSelectedGroup(grp)}
+                  onClick={() => setSelectedGroup(grp.key)}
                   className={`px-4 py-2 text-xs font-mono font-medium rounded-xl transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 ${
                     isActive
                       ? 'bg-zinc-900 text-white shadow-sm border border-zinc-900 font-semibold'
                       : 'bg-white text-zinc-700 hover:text-zinc-900 hover:bg-zinc-100 border border-zinc-200/90'
                   }`}
                 >
-                  <span>{formatGroupLabel(grp)}</span>
-                  <span className={`text-[11px] px-1.5 py-0.2 rounded-md ${
-                    isActive ? 'bg-zinc-800 text-zinc-200' : 'bg-zinc-100 text-zinc-600'
-                  }`}>
-                    {count}
-                  </span>
+                  {grp.icon}
+                  <span>{grp.label}</span>
                 </button>
               );
             })}
           </div>
         )}
 
-        {/* Locations Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {filteredLocations.map((loc, idx) => (
-            <Card
-              key={loc.id || idx}
-              className="bg-white border-zinc-200 overflow-hidden flex flex-col justify-between group hover:border-emerald-500/40 hover:shadow-xl transition-all duration-300"
-            >
-              <div className="relative aspect-[16/10] overflow-hidden bg-zinc-100">
-                <img
-                  src={loc.image ? getLocationAssetUrl(loc.image) : 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80'}
-                  alt={loc.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=600&q=80';
-                  }}
-                />
-                <Badge
-                  variant="secondary"
-                  className="absolute top-3 left-3 bg-white/95 backdrop-blur-md text-zinc-800 text-[10px] font-mono border-zinc-200 shadow-xs uppercase font-bold"
-                >
-                  {loc.group || 'Node'}
-                </Badge>
-              </div>
-
-              <CardContent className="p-5 space-y-3 flex-1 flex flex-col justify-between">
-                <div>
-                  <h3 className="font-bold text-zinc-900 text-base group-hover:text-emerald-700 transition-colors">
-                    {loc.title}
-                  </h3>
-                  {loc.desc && (
-                    <div>
-                      <p
-                        className={`text-xs text-zinc-500 mt-1 leading-relaxed font-normal transition-all ${
-                          expandedIds[loc.id || idx] ? '' : 'line-clamp-2'
-                        }`}
-                      >
-                        {loc.desc}
-                      </p>
-                      {loc.desc.length > 50 && (
-                        <button
-                          type="button"
-                          onClick={() => toggleExpand(loc.id || idx)}
-                          className="text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 mt-1 inline-flex items-center gap-0.5 cursor-pointer transition-colors"
-                        >
-                          {expandedIds[loc.id || idx] ? 'Read less' : 'Read more'}
-                        </button>
-                      )}
-                    </div>
-                  )}
+        {/* Location Cards Grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-80 rounded-2xl bg-zinc-200/60 animate-pulse" />
+            ))}
+          </div>
+        ) : filteredLocations.length === 0 ? (
+          <div className="py-16 text-center text-zinc-400">
+            <MapPin className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">No prime locations found in this category.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {filteredLocations.map((loc) => (
+              <div
+                key={loc.id}
+                className="group relative rounded-2xl overflow-hidden bg-zinc-900 border border-zinc-200/90 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-[380px]"
+              >
+                {/* Background Image Container */}
+                <div className="absolute inset-0 z-0 overflow-hidden">
+                  <img
+                    src={loc.image}
+                    alt={loc.title}
+                    loading="lazy"
+                    onError={(e: any) => {
+                      e.target.src = 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=800&q=80';
+                    }}
+                    className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
                 </div>
 
-                <div className="pt-3 border-t border-zinc-100 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-emerald-700 font-mono font-bold">
+                {/* Card Content Perched on Bottom */}
+                <div className="relative z-10 mt-auto p-5 space-y-2 text-white">
+                  <div className="flex items-center gap-2 text-xs font-mono text-emerald-400 font-bold">
                     <Navigation className="w-3.5 h-3.5" />
                     <span>{loc.distance}</span>
+                    {loc.travelTime && (
+                      <>
+                        <span className="text-zinc-400">•</span>
+                        <span className="text-zinc-300 flex items-center gap-1 font-normal">
+                          <Clock className="w-3 h-3 text-zinc-400" />
+                          {loc.travelTime}
+                        </span>
+                      </>
+                    )}
                   </div>
-                  {loc.travelTime && (
-                    <div className="flex items-center gap-1 text-zinc-500 font-mono">
-                      <Clock className="w-3 h-3" />
-                      <span>{loc.travelTime}</span>
-                    </div>
+
+                  <h3 className="font-extrabold text-base sm:text-lg text-white leading-snug drop-shadow-sm group-hover:text-emerald-300 transition-colors">
+                    {loc.title}
+                  </h3>
+
+                  {loc.desc && (
+                    <p className="text-xs text-zinc-300 line-clamp-2 font-normal leading-relaxed">
+                      {loc.desc}
+                    </p>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );

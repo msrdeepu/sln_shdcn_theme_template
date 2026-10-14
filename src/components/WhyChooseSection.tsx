@@ -2,7 +2,7 @@ import React from 'react';
 import { VentureData } from '../types';
 import { Card, CardTitle, CardDescription } from './ui/card';
 import { Badge } from './ui/badge';
-import { Compass, TrendingUp, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Compass, TrendingUp, ShieldCheck } from 'lucide-react';
 
 interface WhyChooseSectionProps {
   venture: VentureData;
@@ -14,44 +14,30 @@ export default function WhyChooseSection({ venture }: WhyChooseSectionProps) {
     : [
         {
           tag: 'Strategic Nexus',
-          title: 'Tada-Sri City Growth Gateway',
-          description: 'Positioned signal-free along the NH-16 arterial expressway, placing Fortune-500 industrial hubs and express transit within minutes.',
-          points: [
-            '5 Mins to Tada Railway Junction',
-            'Direct signal-free 6-lane artery to North Chennai',
-            'Adjacent to international industrial logistics corridor'
-          ],
-          icon: 'Compass'
+          title: 'Prime Growth Corridor',
+          description: 'Positioned signal-free along major expressways, placing employment hubs and rapid transit corridors within easy access.',
+          icon: 'Compass',
         },
         {
           tag: 'Capital Appreciation',
-          title: 'High-Yield Industrial Synergy',
-          description: 'Flanked by Sri City SEZ housing 220+ global conglomerates with over 65,000 corporate professionals driving relentless land appreciation.',
-          points: [
-            'Demonstrated 18–24% historic annual land appreciation',
-            'Expanding educational campuses & tertiary healthcare hubs',
-            'Sustained corporate housing rental demand'
-          ],
-          icon: 'TrendingUp'
+          title: 'High-Yield Investment Potential',
+          description: 'Surrounded by rapidly developing commercial and residential infrastructure, driving consistent long-term land appreciation.',
+          icon: 'TrendingUp',
         },
         {
           tag: 'Legal Integrity',
           title: '100% Clear Title & Spot Registry',
-          description: 'Complete statutory and legal certainty with sanctioned layout certification, verified titles, and pre-approved national bank loans.',
-          points: [
-            'Immediate spot registration upon plot allocation',
-            'Pre-approved mortgage assistance: SBI, HDFC, ICICI',
-            'Unencumbered freehold ownership deed'
-          ],
-          icon: 'ShieldCheck'
-        }
+          description: 'Complete statutory and legal certainty with approved layout certification, verified freehold deeds, and immediate registration.',
+          icon: 'ShieldCheck',
+        },
       ];
 
   const getIcon = (tag: string, iconName?: string) => {
-    if (tag.toLowerCase().includes('location') || tag.toLowerCase().includes('nexus') || iconName === 'Compass') {
+    const t = (tag || '').toLowerCase();
+    if (t.includes('location') || t.includes('nexus') || iconName === 'Compass') {
       return <Compass className="w-5 h-5 text-emerald-600" />;
     }
-    if (tag.toLowerCase().includes('appreciation') || tag.toLowerCase().includes('growth') || iconName === 'TrendingUp') {
+    if (t.includes('appreciation') || t.includes('growth') || iconName === 'TrendingUp') {
       return <TrendingUp className="w-5 h-5 text-sky-600" />;
     }
     return <ShieldCheck className="w-5 h-5 text-amber-600" />;
@@ -68,7 +54,7 @@ export default function WhyChooseSection({ venture }: WhyChooseSectionProps) {
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-zinc-900 tracking-tight">
             {venture.whyChooseTitle || 'Engineered for Generational Growth & Title Certainty'}
           </h2>
-          {venture.whyChooseSubtitle && (
+          {Boolean(venture.whyChooseSubtitle && venture.whyChooseSubtitle.trim()) && (
             <p className="text-base text-zinc-600 mt-4 leading-relaxed font-normal">
               {venture.whyChooseSubtitle}
             </p>
@@ -104,17 +90,6 @@ export default function WhyChooseSection({ venture }: WhyChooseSectionProps) {
                 <CardDescription className="text-zinc-600 text-sm leading-relaxed font-normal">
                   {pillar.description}
                 </CardDescription>
-
-                {pillar.points && pillar.points.length > 0 && (
-                  <div className="pt-3.5 border-t border-zinc-100 space-y-2">
-                    {pillar.points.map((pt, pIdx) => (
-                      <div key={pIdx} className="flex items-start gap-2 text-xs text-zinc-700 font-medium">
-                        <ChevronRight className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>{pt}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             </Card>
           ))}

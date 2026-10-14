@@ -1,6 +1,5 @@
 import React from 'react';
 import { VentureData } from '../types';
-import { Badge } from './ui/badge';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/accordion';
 
 interface FaqSectionProps {
@@ -20,25 +19,20 @@ export default function FaqSection({ venture }: FaqSectionProps) {
   return (
     <section id="faqs" className="py-20 lg:py-28 bg-[#fafaf9] border-b border-zinc-200/90 text-zinc-900 relative">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-16">
-          <Badge variant="outline" className="mb-4 text-xs font-mono uppercase tracking-wider border-emerald-600/30 text-emerald-700 bg-emerald-50">
-            Clear Statutory Transparency
-          </Badge>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-zinc-900 tracking-tight">
-            Frequently Answered Inquiries
+        {/* Section Header: Standardized heading without chip badge or subtitle */}
+        <div className="text-center max-w-2xl mx-auto mb-12">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-zinc-900 tracking-tight leading-tight">
+            Frequently Asked Questions
           </h2>
-          <p className="text-zinc-600 text-sm sm:text-base mt-3 font-normal">
-            Key statutory, legal, financial, and infrastructural questions answered with full clarity.
-          </p>
         </div>
 
-        {/* Radix Accordion in Day Theme */}
+        {/* Radix Accordion */}
         <Accordion type="single" collapsible defaultValue="item-0" className="w-full space-y-3">
           {faqs.map((faq, idx) => (
             <AccordionItem
               key={idx}
               value={`item-${idx}`}
-              className="bg-white border border-zinc-200/90 rounded-xl px-5 hover:border-emerald-500/40 shadow-xs transition-colors"
+              className="bg-white border border-zinc-200/90 rounded-2xl px-5 sm:px-6 hover:border-emerald-500/40 shadow-xs transition-colors"
             >
               <AccordionTrigger className="text-left text-sm sm:text-base font-bold text-zinc-900 py-4 hover:no-underline hover:text-emerald-700">
                 {faq.question}

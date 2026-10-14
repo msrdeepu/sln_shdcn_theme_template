@@ -6,7 +6,6 @@ import {
   Maximize,
   Route,
   IndianRupee,
-  ChevronRight,
   Sparkles,
   AlertTriangle,
   Plus,
@@ -110,9 +109,6 @@ export default function PlotComparisonMatrixModal({
                   {comparedPlots.length} of {maxPlots} Selected
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                {ventureName} • Compare facing, dimensions, area, sft costs, and total pricing
-              </p>
             </div>
           </div>
 
@@ -199,9 +195,6 @@ export default function PlotComparisonMatrixModal({
                 const totalPrice =
                   plot.total_cost ||
                   (sftCostNum && sqFeet ? sftCostNum * Number(sqFeet) : null);
-
-                const isAvailable =
-                  plot.status?.toLowerCase().trim() === "available";
 
                 return (
                   <div
@@ -321,55 +314,16 @@ export default function PlotComparisonMatrixModal({
                         </span>
                       </div>
 
-                      {/* Total Valuation */}
-                      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-2xl p-3 space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-emerald-800">
-                            Total Price
-                          </span>
-                          <span className="text-sm font-black text-emerald-700">
-                            {totalPrice ? formatCurrency(totalPrice) : "Contact Office"}
-                          </span>
-                        </div>
-                        {plot.outstanding !== undefined &&
-                          plot.outstanding !== null &&
-                          plot.outstanding > 0 && (
-                            <div className="flex items-center justify-between text-[11px] pt-1 border-t border-emerald-200/50">
-                              <span className="text-amber-800 font-medium">Outstanding:</span>
-                              <span className="font-bold text-amber-700">
-                                {formatCurrency(plot.outstanding)}
-                              </span>
-                            </div>
-                          )}
+                      {/* Total Cost */}
+                      <div className="flex items-center justify-between py-1.5">
+                        <span className="text-slate-500 flex items-center gap-1.5 font-medium">
+                          <IndianRupee className="h-3.5 w-3.5 text-emerald-600" />
+                          Total Cost
+                        </span>
+                        <span className="font-extrabold text-emerald-700">
+                          {totalPrice ? formatCurrency(totalPrice) : "Contact Office"}
+                        </span>
                       </div>
-                    </div>
-
-                    {/* Actions Footer */}
-                    <div className="p-3.5 bg-slate-50 border-t border-slate-100 space-y-1.5">
-                      {isAvailable ? (
-                        <>
-                          <Button
-                            onClick={() => onBookSiteVisit(plot)}
-                            className="w-full bg-[#f97316] hover:bg-[#ea580c] text-white font-black text-xs h-9 rounded-xl shadow-xs tracking-wider uppercase flex items-center justify-center gap-1.5 cursor-pointer transition-transform active:scale-95"
-                          >
-                            <Sparkles className="h-3.5 w-3.5" />
-                            <span>BOOK SITE VISIT</span>
-                          </Button>
-
-                          <Button
-                            size="sm"
-                            onClick={() => onBookPlot(plot)}
-                            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs h-8.5 font-bold cursor-pointer flex items-center justify-center gap-1"
-                          >
-                            <span>Book Plot</span>
-                            <ChevronRight className="h-3.5 w-3.5" />
-                          </Button>
-                        </>
-                      ) : (
-                        <div className="text-center py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-500 border border-slate-200">
-                          {plot.status}
-                        </div>
-                      )}
                     </div>
                   </div>
                 );

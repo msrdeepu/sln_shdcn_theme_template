@@ -1,387 +1,316 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { VentureData } from '../types';
-import { Button } from './ui/button';
+import React, { useState, useEffect } from 'react';
 import {
-  Calendar,
-  ChevronDown,
-  Tv,
-  X,
-  Maximize2,
   MapPin,
-  Building2,
-  ShieldCheck,
+  Box as BoxIcon,
+  Calendar,
   ArrowRight,
-  Search,
-  Phone
+  Maximize2,
+  X,
 } from 'lucide-react';
+import type { VentureData } from '../types';
+import { micrositeService } from '../services/micrositeService';
+import { SITE_CONFIG } from '../siteConfig';
 
 interface HeroSectionProps {
   venture: VentureData;
 }
 
 export default function HeroSection({ venture }: HeroSectionProps) {
-  const [videoOpen, setVideoOpen] = useState(false);
-  const [isImageFullscreen, setIsImageFullscreen] = useState(false);
-  const fullscreenContainerRef = useRef<HTMLDivElement>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [plotStats, setPlotStats] = useState<{ total: number | null; available: number | null }>({
+    total: venture.totalPlotsCount ?? null,
+    available: venture.availablePlotsCount ?? null,
+  });
 
-  // Extract Vimeo Video ID strictly from CMS API
-  const rawVimeoId = (venture.vimeoId || venture.vimeoUrl || '').trim();
-  const cleanVimeoId = (() => {
-    if (!rawVimeoId) return '';
-    const match = rawVimeoId.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)?([0-9a-zA-Z_-]+)/);
-    return match ? match[1] : rawVimeoId;
-  })();
+  // Query live properties from Property model for this venture (Total Plots & Available Plots)
+  useEffect(() => {
+    const vId = venture.ventureId || (venture as any).venture_id || SITE_CONFIG.activeVentureId;
+    if (vId) {
+      micrositeService.fetchPropertyStats(vId).then((res) => {
+        if (res) {
+          setPlotStats({
+            total: res.total_plots,
+            available: res.available_plots,
+          });
+        }
+      });
+    }
+  }, [venture.ventureId]);
 
-  const hasVideo = Boolean(cleanVimeoId);
+  // Close lightbox on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isPreviewOpen) {
+        setIsPreviewOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewOpen]);
 
-  // Vimeo URLs
-  const vimeoBgEmbedUrl = hasVideo
-    ? `https://player.vimeo.com/video/${cleanVimeoId}?autoplay=1&loop=1&background=1&muted=1&autopause=0&quality=1080p`
-    : '';
-  const vimeoFullscreenUrl = hasVideo
-    ? `https://player.vimeo.com/video/${cleanVimeoId}?autoplay=1&title=0&byline=0&portrait=0&badge=0&autopause=0`
-    : '';
+  const heroImageSrc = venture.heroBanner;
 
-  const scrollToContent = () => {
-    const el = document.getElementById('stats-strip') || document.getElementById('why-choose');
+  // Use custom background cover image if uploaded in admin, fallback to site photo or hero banner
+  const bgCoverImage =
+    venture.heroBgImage ||
+    venture.aboutImage ||
+    venture.heroBanner ||
+    '';
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Handle Fullscreen Enter for Video
-  const handleOpenFullscreen = () => {
-    setVideoOpen(true);
-    setTimeout(() => {
-      const el = fullscreenContainerRef.current || document.documentElement;
-      if (el?.requestFullscreen) {
-        el.requestFullscreen().catch(() => {});
-      } else if ((el as any)?.webkitRequestFullscreen) {
-        (el as any).webkitRequestFullscreen();
-      }
-    }, 100);
-  };
-
-  // Handle Fullscreen Exit for Video
-  const handleCloseFullscreen = () => {
-    setVideoOpen(false);
-    if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      }
-    }
-  };
-
-  // Handle Full Page Edge-to-Edge Viewer for Image (Zero Boxed Modal)
-  const handleOpenImageFullscreen = () => {
-    setIsImageFullscreen(true);
-    setTimeout(() => {
-      const el = document.documentElement;
-      if (el?.requestFullscreen) {
-        el.requestFullscreen().catch(() => {});
-      } else if ((el as any)?.webkitRequestFullscreen) {
-        (el as any).webkitRequestFullscreen();
-      }
-    }, 100);
-  };
-
-  const handleCloseImageFullscreen = () => {
-    setIsImageFullscreen(false);
-    if (document.fullscreenElement || (document as any).webkitFullscreenElement) {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-      } else if ((document as any).webkitExitFullscreen) {
-        (document as any).webkitExitFullscreen();
-      }
-    }
-  };
-
-  // Listen to Escape key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (videoOpen) handleCloseFullscreen();
-        if (isImageFullscreen) handleCloseImageFullscreen();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [videoOpen, isImageFullscreen]);
-
-  const [isCardHovered, setIsCardHovered] = useState<boolean>(false);
-
-  // =========================================================================
-  // SCENARIO A: 100vh FULL CINEMATIC VIMEO BACKGROUND VIDEO (When video exists)
-  // =========================================================================
-  if (hasVideo) {
-    return (
-      <section
-        id="hero"
-        className="relative h-screen min-h-[680px] w-full overflow-hidden flex flex-col justify-end"
-      >
-        <div className="absolute inset-0 z-0 bg-zinc-900 overflow-hidden pointer-events-none">
-          {venture.heroBanner && (
-            <img
-              src={venture.heroBanner}
-              alt={venture.title}
-              className="absolute inset-0 w-full h-full object-cover object-center"
-            />
-          )}
-
-          <iframe
-            src={vimeoBgEmbedUrl}
-            title="Venture Cinematic Vimeo Hero Video"
-            className="w-[100vw] h-[56.25vw] min-h-[100vh] min-w-[177.77vh] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 border-0 pointer-events-none"
-            allow="autoplay; fullscreen"
-          />
-        </div>
-
-        {/* Bottom Hero Information Card on Hover */}
-        <div className="relative z-10 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 w-full pb-4 sm:pb-12 pointer-events-none">
-          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 sm:gap-6">
-            <div
-              onMouseEnter={() => setIsCardHovered(true)}
-              onMouseLeave={() => setIsCardHovered(false)}
-              className={`w-full sm:w-auto sm:max-w-2xl bg-white/95 backdrop-blur-md border border-white/80 shadow-2xl rounded-2xl p-4 sm:p-8 space-y-2.5 sm:space-y-4 transition-all duration-300 ease-out pointer-events-auto ${
-                isCardHovered
-                  ? 'opacity-100 translate-y-0 shadow-2xl'
-                  : 'opacity-0 translate-y-2 max-sm:opacity-100'
-              }`}
-            >
-              <h1 className="text-2xl sm:text-5xl lg:text-6xl font-black tracking-tight text-zinc-950 leading-tight sm:leading-[1.08]">
-                {venture.headline || venture.title}
-              </h1>
-
-              <p className="text-xs sm:text-base text-zinc-700 font-normal leading-snug sm:leading-relaxed text-balance line-clamp-2 sm:line-clamp-none">
-                {venture.subheadline || venture.tagline}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 pt-0.5 sm:pt-1">
-                <Button
-                  size="sm"
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm shadow-md gap-2 h-9 sm:h-11 px-4 sm:px-6 rounded-xl cursor-pointer"
-                  asChild
-                >
-                  <a href="#contact">
-                    <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    <span>Book Site Visit</span>
-                  </a>
-                </Button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenFullscreen}
-                  className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-mono text-[11px] sm:text-xs font-semibold px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl border border-zinc-200 shadow-xs flex items-center gap-1.5 sm:gap-2 cursor-pointer transition-all hover:scale-102"
-                >
-                  <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600" />
-                  <span>Play High-Res Vimeo Film</span>
-                </button>
-              </div>
-            </div>
-
-            <button
-              onClick={scrollToContent}
-              className="hidden sm:flex items-center gap-2 text-white/90 hover:text-white text-xs font-mono uppercase tracking-wider group cursor-pointer self-end pb-2 drop-shadow-md transition-colors"
-            >
-              <span>Scroll to Explore</span>
-              <div className="w-8 h-8 rounded-full border border-white/40 bg-black/40 backdrop-blur-md flex items-center justify-center group-hover:border-emerald-400 group-hover:text-emerald-400 shadow-md transition-all">
-                <ChevronDown className="w-4 h-4 animate-bounce text-white" />
-              </div>
-            </button>
-          </div>
-        </div>
-
-        {videoOpen && (
-          <div
-            ref={fullscreenContainerRef}
-            role="dialog"
-            aria-modal="true"
-            className="fixed inset-0 z-50 bg-black flex flex-col w-screen h-screen overflow-hidden"
-          >
-            <div className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 sm:p-6 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-auto">
-              <div className="flex items-center gap-3">
-                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-                <h3 className="text-white font-bold text-sm sm:text-base font-mono">
-                  {venture.droneVideoTitle || `${venture.title} — 4K Aerial Walkthrough`}
-                </h3>
-              </div>
-              <button
-                onClick={handleCloseFullscreen}
-                className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="w-full h-full relative">
-              <iframe
-                src={vimeoFullscreenUrl}
-                title="Vimeo Fullscreen Video Walkthrough"
-                className="w-full h-full border-0"
-                allow="autoplay; fullscreen"
-              />
-            </div>
-          </div>
-        )}
-      </section>
-    );
-  }
-
-  // =========================================================================
-  // SCENARIO B: LUMINOUS AURORA HERO WITH LAYERED CARD SHOWCASE (When no video)
-  // Perfectly matching the 'Housy' reference design aesthetic
-  // =========================================================================
   return (
     <section
       id="hero"
-      className="relative min-h-[90vh] w-full bg-[#fafbfc] pt-24 sm:pt-28 lg:pt-32 pb-10 lg:pb-14 flex flex-col justify-center overflow-hidden antialiased text-zinc-900"
+      className="relative min-h-[92vh] lg:min-h-screen w-full pt-28 lg:pt-32 pb-16 lg:pb-20 flex flex-col justify-center overflow-hidden antialiased text-zinc-900 bg-[#faf9f5]"
     >
-      {/* Luminous Dreamy Mesh Gradient Aura (Housy Style) */}
-      {/* Subtle Luminous Ambient Aura (Soft & Warm, No Heavy Blue) */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden -z-10">
-        {/* Soft Golden/Amber Aura (Top Left) */}
-        <div className="absolute -top-24 -left-24 w-[500px] h-[500px] bg-gradient-to-br from-amber-100/30 to-transparent rounded-full blur-3xl" />
-        
-        {/* Gentle Emerald/Teal Glow */}
-        <div className="absolute top-10 right-10 w-[550px] h-[550px] bg-gradient-to-bl from-emerald-100/30 to-transparent rounded-full blur-3xl" />
+      {/* ========================================================================= */}
+      {/* BIG COVER IMAGE IN BACKGROUND (DAY THEME WITH SUNLIT LUXURY OVERLAYS)     */}
+      {/* ========================================================================= */}
+      <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+        {bgCoverImage && (
+          <img
+            src={bgCoverImage}
+            alt={`${venture.title} Cover Background`}
+            className="w-full h-full object-cover object-center scale-102 filter brightness-[0.98] contrast-[1.02]"
+            loading="eager"
+          />
+        )}
+
+        {/* Multi-angle sunlit day gradient overlays: daylight vibrancy with flawless readability */}
+        <div className="absolute inset-0 bg-gradient-to-r from-[#faf9f5]/96 via-[#faf9f5]/88 to-[#faf9f5]/40" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#faf9f5] via-transparent to-[#faf9f5]/60" />
+
+        {/* Ambient atmospheric day glow */}
+        <div className="absolute top-0 right-1/4 w-[600px] h-[600px] bg-emerald-100/35 rounded-full blur-3xl" />
+        <div className="absolute bottom-10 left-10 w-[500px] h-[500px] bg-amber-100/30 rounded-full blur-3xl" />
+
+        {/* Subtle architectural precision dot grid */}
+        <div
+          className="absolute inset-0 opacity-[0.035]"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)',
+            backgroundSize: '32px 32px',
+          }}
+        />
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full z-10">
-        <div className="relative flex flex-col lg:flex-row items-center justify-center">
-          
-          {/* ========================================================================= */}
-          {/* LEFT: Modern Floating Card (Layered Overlap Depth, Centered Composition)  */}
-          {/* ========================================================================= */}
-          <div className="w-full lg:w-auto lg:max-w-[520px] xl:max-w-[560px] z-20 lg:-mr-12 xl:-mr-16 relative bg-white/95 backdrop-blur-xl rounded-[28px] sm:rounded-[36px] p-7 sm:p-9 lg:p-11 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.12)] border border-white/90 space-y-5 sm:space-y-6">
-            {/* Eyebrow with mint accent bar */}
-            <div>
-              <span className="text-xs sm:text-sm font-bold tracking-wider uppercase text-emerald-600 block">
-                {venture.welcomeEyebrow || 'PREMIER PLOTTED GATED COMMUNITY'}
-              </span>
-              <div className="w-10 h-0.5 bg-emerald-500 mt-1.5 rounded-full" />
-            </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 my-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
 
-            {/* Monumental Headline with Mint Brush Highlight */}
+          {/* ========================================================================= */}
+          {/* LEFT COLUMN: Venture Title, Location, Narrative, 3 Specs, Two CTAs (7 Cols)*/}
+          {/* ========================================================================= */}
+          <div className="lg:col-span-7 space-y-6 lg:space-y-7">
+
+            {/* Monumental Venture Title */}
             <div>
-              <h1 className="text-2xl sm:text-4xl lg:text-[2.65rem] font-black tracking-tight text-zinc-950 leading-[1.14] text-balance">
-                Here to help you find the home of{' '}
-                <span className="relative inline-block text-zinc-950 whitespace-nowrap">
-                  your dreams
-                  <span className="absolute bottom-1 sm:bottom-1.5 left-0 right-0 h-2.5 sm:h-3.5 bg-emerald-300/70 -z-10 rounded-sm" />
-                </span>
-                .
+              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-serif font-black tracking-tight leading-[1.05] text-zinc-950 text-balance">
+                {venture.title}
               </h1>
             </div>
 
-            {/* Subheadline / Narrative Description */}
-            <p className="text-sm sm:text-base text-zinc-600 leading-relaxed font-normal">
-              {venture.subheadline ||
+            {/* Narrative & Location Pill */}
+            <div className="space-y-3.5 max-w-2xl">
+              {(venture.subheadline ||
                 venture.tagline ||
-                `Discover ${venture.title}, a premium residential open-plot venture designed for comfortable living and smart investment, offering well-planned plots and prime connectivity.`}
-            </p>
+                (venture.headline && venture.headline !== venture.title ? venture.headline : '')) && (
+                <p className="text-base sm:text-lg text-zinc-600 font-normal leading-relaxed">
+                  {venture.subheadline || venture.tagline || venture.headline}
+                </p>
+              )}
 
-            {/* Action Button: Book Site Visit */}
-            <div className="pt-1">
-              <Button
-                size="lg"
-                className="h-12 px-8 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-sm shadow-md shadow-emerald-500/15 gap-2 transition-all hover:scale-102 cursor-pointer"
-                asChild
+              {venture.location && (
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-zinc-800 bg-white/90 backdrop-blur-md border border-zinc-200/90 w-fit px-3.5 py-1.5 rounded-xl shadow-xs">
+                  <MapPin className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>{venture.location}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Dynamic Metric Specs: 3 Cards */}
+            {(() => {
+              // 1. Total Acres (Manual Entry from admin specs)
+              const acresSpec = Array.isArray(venture.specs)
+                ? venture.specs.find((s) => /acre/i.test(s.label || '')) || venture.specs[0]
+                : null;
+              const acresVal = acresSpec?.value || '10';
+              const acresLabel = acresSpec?.label && /acre/i.test(acresSpec.label) ? acresSpec.label.toUpperCase() : 'TOTAL ACRES';
+              const acresSub = acresSpec?.sub || 'DTCP & RERA Approved';
+
+              // 2. Total Plots (From Property model query)
+              const plotsSpec = Array.isArray(venture.specs)
+                ? venture.specs.find((s) => /plot/i.test(s.label || ''))
+                : null;
+              const totalPlotsVal =
+                plotStats.total != null && plotStats.total > 0
+                  ? String(plotStats.total)
+                  : venture.totalPlotsCount != null && venture.totalPlotsCount > 0
+                  ? String(venture.totalPlotsCount)
+                  : venture.totalPlots || plotsSpec?.value || '131';
+              const totalPlotsLabel = 'TOTAL PLOTS';
+              const totalPlotsSub = plotsSpec?.sub || 'Engineered for Heavy Traffic';
+
+              // 3. Available Plots (From Property model where status == 'Available')
+              const availablePlotsVal =
+                plotStats.available != null
+                  ? String(plotStats.available)
+                  : venture.availablePlotsCount != null
+                  ? String(venture.availablePlotsCount)
+                  : '128';
+              const availablePlotsLabel = 'AVAILABLE PLOTS';
+              const availablePlotsSub = 'East & North Facing Alignments';
+
+              const cards = [
+                { label: acresLabel, value: acresVal, sub: acresSub },
+                { label: totalPlotsLabel, value: totalPlotsVal, sub: totalPlotsSub },
+                { label: availablePlotsLabel, value: availablePlotsVal, sub: availablePlotsSub },
+              ];
+
+              return (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 max-w-xl pt-1">
+                  {cards.map((spec, idx) => (
+                    <div
+                      key={idx}
+                      className="bg-white/92 hover:bg-white backdrop-blur-md rounded-2xl p-3.5 sm:p-4 border border-zinc-200/90 shadow-xs hover:shadow-md transition-all"
+                    >
+                      <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-zinc-400 block mb-0.5 truncate">
+                        {spec.label}
+                      </span>
+                      <span className="text-xl sm:text-2xl font-bold font-serif text-zinc-900 block truncate">
+                        {spec.value}
+                      </span>
+                      {spec.sub && (
+                        <span className="text-[10px] text-emerald-600 font-semibold mt-0.5 block truncate">
+                          {spec.sub}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* Action Row: Two CTAs */}
+            <div className="grid grid-cols-2 gap-2.5 sm:flex sm:items-center sm:gap-4 pt-2 w-full">
+              {/* CTA 1: Explore 3D Master Plan */}
+              <button
+                type="button"
+                onClick={() => scrollToSection('master-plan')}
+                className="w-full sm:w-auto px-4 sm:px-8 py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-sans font-extrabold text-[11.5px] sm:text-xs md:text-sm tracking-wide uppercase shadow-lg shadow-emerald-900/15 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 group text-center"
               >
-                <a href="#contact">
-                  <Calendar className="w-4 h-4" />
-                  <span>Book Site Visit</span>
-                </a>
-              </Button>
+                <BoxIcon className="h-4 w-4 shrink-0 transition-transform group-hover:scale-110" />
+                <span className="sm:hidden">Explore 3D Plan</span>
+                <span className="hidden sm:inline">Explore 3D Master Plan</span>
+                <ArrowRight className="h-4 w-4 shrink-0 hidden md:inline transition-transform group-hover:translate-x-1" />
+              </button>
+
+              {/* CTA 2: Schedule Site Visit */}
+              <button
+                type="button"
+                onClick={() => scrollToSection('contact')}
+                className="w-full sm:w-auto px-4 sm:px-7 py-3.5 sm:py-4 rounded-2xl bg-white hover:bg-zinc-50 text-zinc-800 font-bold text-[11.5px] sm:text-xs md:text-sm border border-zinc-300 shadow-xs hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 sm:gap-2 text-center"
+              >
+                <Calendar className="h-4 w-4 shrink-0 text-emerald-600" />
+                <span className="sm:hidden">Site Visit</span>
+                <span className="hidden sm:inline">Schedule Site Visit</span>
+              </button>
             </div>
           </div>
 
           {/* ========================================================================= */}
-          {/* RIGHT: High-Precision Portrait Showcase (w: 535px, h: 690px)              */}
+          {/* RIGHT COLUMN: Striking Visual Showcase Banner (5 Cols, 535x690)           */}
           {/* ========================================================================= */}
-          <div className="w-full max-w-[360px] sm:max-w-[420px] lg:max-w-[460px] xl:max-w-[500px] shrink-0 relative z-10 mt-8 lg:mt-0">
-            {/* Elegant Portrait Frame Tailored to 535x690 with Soft Ambient Shadow */}
+          <div className="lg:col-span-5 relative flex justify-center">
+            {/* Ambient Backlight */}
+            <div className="absolute -inset-2 bg-gradient-to-tr from-emerald-500/15 via-teal-400/10 to-amber-400/20 rounded-[34px] blur-2xl opacity-80 -z-10" />
+
+            {/* The High-Precision Showcase Frame (535x690) */}
             <div
-              onClick={handleOpenImageFullscreen}
-              className="relative rounded-[28px] sm:rounded-[36px] overflow-hidden bg-white shadow-[0_25px_60px_-15px_rgba(0,0,0,0.14)] hover:shadow-[0_32px_75px_-15px_rgba(0,0,0,0.18)] border border-zinc-200/80 aspect-[535/690] w-full max-h-[640px] xl:max-h-[680px] group cursor-pointer transition-all duration-300 ease-out hover:-translate-y-1"
+              onClick={() => setIsPreviewOpen(true)}
+              className="relative rounded-[28px] sm:rounded-[32px] overflow-hidden bg-white border border-zinc-200/90 shadow-2xl aspect-[535/690] w-full max-w-[440px] sm:max-w-[480px] lg:max-w-[500px] xl:max-w-[535px] max-h-[690px] group cursor-pointer transition-all duration-300 ease-out hover:-translate-y-1"
               title="Click to view full screen"
             >
-              {venture.heroBanner ? (
+              {heroImageSrc ? (
                 <img
-                  src={venture.heroBanner}
-                  alt={`${venture.title} Official Showcase`}
+                  src={heroImageSrc}
+                  alt={`${venture.title} Striking Visual Showcase`}
                   className="w-full h-full object-cover object-center group-hover:scale-102 transition-transform duration-500 ease-out select-none"
                   loading="eager"
                   width={535}
                   height={690}
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-zinc-400 font-mono text-sm bg-zinc-100">
-                  Official Showcase Preview (535 × 690)
+                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-100 text-zinc-400 gap-2">
+                  <Maximize2 className="w-12 h-12 text-zinc-400" />
+                  <span className="text-xs font-mono">Official Showcase (535 × 690)</span>
                 </div>
               )}
-
-              {/* Slim Floating Full Screen Trigger Pill in Top Corner (Avoids Contact Info) */}
-              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenImageFullscreen();
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-950/75 hover:bg-zinc-950 text-white text-xs font-medium backdrop-blur-md border border-white/15 shadow-sm transition-all hover:scale-105 cursor-pointer"
-                >
-                  <Maximize2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Full Screen</span>
-                </button>
-              </div>
             </div>
           </div>
 
         </div>
-
-
-
       </div>
 
-      {/* ========================================================================= */}
-      {/* TRUE FULL-PAGE / FULLSCREEN IMAGE VIEWER (ZERO BOXED MODAL)               */}
-      {/* ========================================================================= */}
-      {isImageFullscreen && (
+      {/* High-Resolution Master Showcase Lightbox Modal */}
+      {isPreviewOpen && (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 bg-black flex flex-col w-screen h-screen overflow-hidden"
-          onClick={handleCloseImageFullscreen}
+          className="fixed inset-0 z-[99999] bg-zinc-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setIsPreviewOpen(false)}
         >
-          {/* Top Floating Controls */}
+          {/* Header Bar */}
           <div
-            className="absolute top-0 left-0 right-0 z-30 flex items-center justify-between p-4 sm:p-6 bg-gradient-to-b from-black/85 via-black/40 to-transparent pointer-events-auto"
+            className="w-full max-w-5xl flex items-center justify-between pb-3 sm:pb-4 border-b border-white/10 text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-              <h3 className="text-white font-bold text-sm sm:text-base font-mono">
-                {venture.title} — Full Screen Showcase
-              </h3>
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400">
+                <Maximize2 className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold font-serif text-white tracking-wide">
+                  {venture.title} — Official Showcase
+                </h3>
+                <p className="text-[10px] sm:text-xs text-zinc-400 font-mono">
+                  High-Resolution Master Showcase Preview
+                </p>
+              </div>
             </div>
-            <button
-              onClick={handleCloseImageFullscreen}
-              className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPreviewOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Full Screen Edge-to-Edge Image Viewport */}
-          <div className="w-full h-full flex items-center justify-center p-2 sm:p-6">
-            {venture.heroBanner && (
+          {/* Full-View Image Container */}
+          <div
+            className="relative w-full max-w-5xl max-h-[80vh] my-auto flex items-center justify-center overflow-hidden rounded-2xl border border-white/10 shadow-2xl bg-black/60 p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {heroImageSrc && (
               <img
-                src={venture.heroBanner}
-                alt={venture.title}
-                className="w-full h-full object-contain select-none"
+                src={heroImageSrc}
+                alt={`${venture.title} High Resolution Preview`}
+                className="max-w-full max-h-[75vh] object-contain rounded-xl shadow-2xl"
               />
             )}
           </div>
+
+          <p className="text-[11px] font-mono text-zinc-400 mt-2">
+            Click anywhere outside or press Esc to return
+          </p>
         </div>
       )}
     </section>

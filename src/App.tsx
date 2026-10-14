@@ -5,6 +5,8 @@ import { updateDocumentSeo } from './utils/seoManager';
 
 import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
+import CinematicVideoSection from './components/CinematicVideoSection';
+import DevelopmentHighlightsSection from './components/DevelopmentHighlightsSection';
 import StatsBadges from './components/StatsBadges';
 import WhyChooseSection from './components/WhyChooseSection';
 import AboutSection from './components/AboutSection';
@@ -56,14 +58,13 @@ export default function App() {
   }, [currentVenture]);
 
   // Apply dynamic color palette from CMS by injecting CSS custom properties.
-  // Tailwind v4 utility classes already reference these vars (--primary, --background, etc.)
-  // so NO component changes are needed.
+  // Tailwind utility classes reference these vars (--primary, --background, etc.)
   useEffect(() => {
     if (!currentVenture?.colorPalette) return;
     const p = currentVenture.colorPalette;
     const root = document.documentElement;
 
-    // Inline hex → "H S% L%" converter (no deps needed)
+    // Inline hex → "H S% L%" converter
     const hexToHsl = (hex: string): string => {
       let r = 0, g = 0, b = 0;
       const h = hex.replace('#', '');
@@ -87,7 +88,7 @@ export default function App() {
       return `${Math.round(hh * 360)} ${Math.round(ss * 100)}% ${Math.round(ll * 100)}%`;
     };
 
-    // 1. Tailwind v4 utility color overrides (dynamically reroutes all emerald-* classes)
+    // 1. Tailwind v4 utility color overrides
     root.style.setProperty('--color-emerald-50', p.background);
     root.style.setProperty('--color-emerald-100', p.borderColor || p.background);
     root.style.setProperty('--color-emerald-400', p.accent);
@@ -128,18 +129,49 @@ export default function App() {
     >
       <Navbar venture={currentVenture} />
       <main>
+        {/* Section 1: Hero Section */}
         <HeroSection venture={currentVenture} />
+
+        {/* Section 2: Cinematic Drone/Vimeo Video Section (Completely hidden if no video exists) */}
+        {(currentVenture.vimeoId || currentVenture.vimeoUrl) && (
+          <CinematicVideoSection venture={currentVenture} />
+        )}
+
+        {/* Section 3: Development Highlights Section */}
+        <DevelopmentHighlightsSection venture={currentVenture} />
+
+        {/* Section 4: Venture Snapshot / Stats Strip with 3D flip cards */}
         <StatsBadges venture={currentVenture} />
+
+        {/* Section 5: Why This Location */}
         <WhyChooseSection venture={currentVenture} />
+
+        {/* Section 6: Lifestyle & Master Planning (About) */}
         <AboutSection venture={currentVenture} />
+
+        {/* Section 7: Infrastructure & Amenities */}
         <AmenitiesSection venture={currentVenture} />
+
+        {/* Section 8: Interactive 2D & 3D Master Plan */}
         <MasterPlanSection venture={currentVenture} />
+
+        {/* Section 9: Regional Connectivity */}
         <LocationsSection venture={currentVenture} />
+
+        {/* Section 10: Official Project Brochure */}
         <BrochureBanner venture={currentVenture} />
+
+        {/* Section 11: Frequently Asked Questions */}
         <FaqSection venture={currentVenture} />
+
+        {/* Section 12: VIP Site Visit Booking Form */}
         <ContactFormSection venture={currentVenture} />
       </main>
+
+      {/* Section 13: Footer Section with dynamic 4 columns, social links, and Google Map */}
       <FooterSection venture={currentVenture} />
+
+      {/* Real-time ElevenLabs Chat & Voice AI Assistants */}
       {currentVenture && (
         <ElevenLabsWidgets
           chatbotAgentId={currentVenture.chatbotAgentId}
