@@ -45,7 +45,13 @@ export default function FooterSection({ venture }: FooterSectionProps) {
     (s) => Boolean(s && s.url && s.url.trim().length > 0)
   );
 
-  // ── 4. ALL 4 COLUMNS AS FLEXIBLE LINK COLUMNS ─────────────────────────────
+  // ── 4. CENTER HEADLINE (DYNAMIC FROM CMS, e.g. "Explore Our Ventures") ──
+  const headline =
+    footer.headline !== undefined && footer.headline.trim().length > 0
+      ? footer.headline.trim()
+      : 'Explore Our Ventures';
+
+  // ── 5. ALL 4 COLUMNS AS FLEXIBLE LINK COLUMNS ─────────────────────────────
   const defaultCol1: FooterColumn = {
     title: 'Development',
     items: [
@@ -242,7 +248,7 @@ export default function FooterSection({ venture }: FooterSectionProps) {
               </div>
             )}
 
-            {/* Brand Logo & Tagline Header inside Card (Centered) */}
+            {/* Brand Logo & Headline inside Card (Centered) */}
             <div className="flex flex-col items-center justify-center text-center pb-6 border-b border-zinc-100 pt-2 space-y-2.5 max-w-2xl mx-auto">
               <div className="inline-block bg-white px-2.5 py-1 rounded-lg border border-zinc-200/80 shadow-xs mx-auto">
                 <img
@@ -251,27 +257,12 @@ export default function FooterSection({ venture }: FooterSectionProps) {
                   className="h-8 w-auto max-w-[160px] object-contain mx-auto"
                 />
               </div>
-              <h3 className="font-extrabold text-lg sm:text-xl text-zinc-900 leading-tight tracking-tight uppercase">
-                {venture.title}
+              <h3
+                className="font-extrabold text-2xl sm:text-3xl text-center leading-tight tracking-tight"
+                style={{ color: footer.accentColor || '#c5a880' }}
+              >
+                {headline}
               </h3>
-              <p className="text-xs sm:text-sm text-zinc-500 max-w-xl mx-auto leading-relaxed">
-                {venture.tagline ||
-                  'Where Your Vision Takes Shape, and Your Future Finds a Foundation.'}
-              </p>
-
-              {venture.contact?.phone && (
-                <div className="pt-1 flex items-center justify-center gap-2 text-xs">
-                  <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-400 font-bold">
-                    Direct Sales & Site Office:
-                  </span>
-                  <a
-                    href={`tel:${venture.contact.phone}`}
-                    className="font-mono text-xs sm:text-sm font-extrabold text-zinc-900 hover:text-emerald-600 transition-colors"
-                  >
-                    {venture.contact.phone}
-                  </a>
-                </div>
-              )}
             </div>
 
             {/* 4 Flexible Link Columns */}
